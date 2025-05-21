@@ -34,8 +34,12 @@ def summarize_table_for_gpt(df, max_rows=10):
     return summary.head(max_rows).to_string(index=False)
 
 # שליחת שאלה ל-GPT עם זיכרון
+# יצירת client לפי הגרסה החדשה של openai
+client = openai.Client()
+
 def ask_gpt_with_memory(question, df):
     global conversation_memory
+
     if not conversation_memory:
         context = summarize_table_for_gpt(df)
         system_message = {
@@ -48,13 +52,15 @@ def ask_gpt_with_memory(question, df):
         conversation_memory.append(system_message)
 
     conversation_memory.append({"role": "user", "content": question})
-    response = openai.ChatCompletion.create(
+
+    response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=conversation_memory
     )
     answer = response.choices[0].message.content.strip()
     conversation_memory.append({"role": "assistant", "content": answer})
     return answer
+
 
 # תצוגת שיחה
 if not df.empty:
