@@ -6,7 +6,9 @@ import openai
 import io
 
 # הגדרת מפתח API דרך secrets
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+from openai import OpenAI
+
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 st.set_page_config(page_title="סוכן תקציב חכם", layout="wide")
 st.title("🤖 סוכן GPT לניתוח קבצי תקציב")
@@ -57,6 +59,7 @@ def ask_gpt_with_memory(question, df):
         model="gpt-3.5-turbo",
         messages=conversation_memory
     )
+
     answer = response.choices[0].message.content.strip()
     conversation_memory.append({"role": "assistant", "content": answer})
     return answer
