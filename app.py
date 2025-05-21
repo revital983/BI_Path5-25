@@ -1,66 +1,81 @@
-# app.py – אפליקציית Streamlit לבוט תקציב עם ChatGPT
 
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 import openai
 import io
 
+# הגדרת מפתח API דרך secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-st.set_page_config(page_title="סוכן תקציב חכם", page_icon="📊")
-st.title("📊 סוכן חכם לניתוח תקציב")
-st.markdown("העלה קובץ תקציב, שאל שאלה וקבל תשובה מ־GPT כולל גרפים וטבלאות ✨")
+st.set_page_config(page_title="סוכן תקציב חכם", layout="wide")
+st.title("🤖 סוכן GPT לניתוח קבצי תקציב")
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+# משתנים גלובליים
+conversation_memory = []
+df = pd.DataFrame()
 
-uploaded_file = st.file_uploader("העלה קובץ CSV של תקציב:", type=["csv"])
-
+# העלאת קובץ
+uploaded_file = st.file_uploader("📂 העלה קובץ תקציב (CSV)", type=["csv"])
 if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    df["אחוז ביצוע (%)"] = (df["הוצאה בפועל"] / df["תקציב"]) * 100
-
-    with st.expander("📋 הצג טבלת תקציב מלאה"):
+    try:
+        df = pd.read_csv(uploaded_file)
+        df["אחוז ביצוע (%)"] = (df["הוצאה בפועל"] / df["תקציב"]) * 100
+        st.success("✅ הקובץ נטען בהצלחה!")
         st.dataframe(df)
+    except Exception as e:
+        st.error(f"שגיאה בטעינת הקובץ: {e}")
 
-    if st.checkbox("📈 הצג גרף ביצועים"):
-        st.bar_chart(df.set_index("מחלקה")["אחוז ביצוע (%)"])
-
-    question = st.text_input("🔎 שאל שאלה על התקציב:")
-
-    def summarize_table(df, max_rows=10):
-        summary = df[["מחלקה", "תקציב", "הוצאה בפועל", "אחוז ביצוע (%)"]].copy()
+# סיכום טבלה ל-GPT
+def summarize_table_for_gpt(df, max_rows=10):
+    summary = df.copy()
+    if "אחוז ביצוע (%)" in summary.columns:
         summary = summary.sort_values("אחוז ביצוע (%)", ascending=False)
-        summary = summary.head(max_rows)
-        return summary.to_markdown(index=False)
+    return summary.head(max_rows).to_string(index=False)
 
-    def ask_gpt_with_context(question, df):
-        context = summarize_table(df)
-        system = (
-            "אתה עוזר לנתח תקציב של ארגון. "
-            "ענה בעברית בצורה תמציתית, אם רלוונטי הצג טבלה פשוטה בעברית עם עמודות.\n\n"
-            f"הנה טבלה מסוכמת:\n{context}"
-        )
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": question}
-        ]
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages
-        )
-        return response.choices[0].message.content.strip()
+# שליחת שאלה ל-GPT עם זיכרון
+def ask_gpt_with_memory(question, df):
+    global conversation_memory
+    if not conversation_memory:
+        context = summarize_table_for_gpt(df)
+        system_message = {
+            "role": "system",
+            "content": (
+                f"אתה עוזר לנתח תקציב של ארגון. הטבלה כוללת שמות מחלקות, תקציב, ביצוע בפועל ואחוז ביצוע. "
+                f"ענה בצורה תמציתית, מדויקת וברורה.\nהנה התקציר:\n{context}"
+            )
+        }
+        conversation_memory.append(system_message)
 
-    if question:
-        with st.spinner("GPT חושב..."):
-            answer = ask_gpt_with_context(question, df)
-            st.session_state.chat_history.append((question, answer))
+    conversation_memory.append({"role": "user", "content": question})
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=conversation_memory
+    )
+    answer = response.choices[0].message.content.strip()
+    conversation_memory.append({"role": "assistant", "content": answer})
+    return answer
 
-    if st.session_state.chat_history:
-        st.markdown("---")
-        st.markdown("### 💬 שיחה עם הסוכן")
-        for q, a in reversed(st.session_state.chat_history):
-            st.markdown(f"**שאלה:** {q}")
-            st.markdown(f"**תשובה:** {a}")
-else:
-    st.info("נא להעלות קובץ CSV על מנת להתחיל")
+# תצוגת שיחה
+if not df.empty:
+    with st.expander("💬 שוחח עם הסוכן", expanded=True):
+        user_question = st.text_input("הקלד שאלה")
+        if st.button("שאל"):
+            if user_question:
+                response = ask_gpt_with_memory(user_question, df)
+                st.markdown("**🧠 תשובת הסוכן:**")
+                st.write(response)
+            else:
+                st.warning("אנא הקלד שאלה.")
+
+    # גרף ביצועים
+    if st.button("📊 הצג גרף ביצועים"):
+        try:
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.bar(df["מחלקה"], df["אחוז ביצוע (%)"], color='skyblue')
+            ax.set_title("אחוז ביצוע לפי מחלקה")
+            ax.set_ylabel("אחוז ביצוע (%)")
+            ax.set_xticklabels(df["מחלקה"], rotation=45, ha='right')
+            st.pyplot(fig)
+        except:
+            st.error("שגיאה ביצירת הגרף.")
