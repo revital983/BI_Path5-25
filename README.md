@@ -4,7 +4,7 @@
 אפליקציית Streamlit חכמה לניתוח קבצי תקציב בשפה טבעית בעזרת GPT.
 
 ## 📂 קבצים בפרויקט:
-- `app.py` – הקוד הראשי
+- `budget_gpt_agent_colab.py` – הקוד הראשי
 - `.streamlit/secrets.toml` – מפתח OpenAI
 - `README.md` – הוראות שימוש
 
